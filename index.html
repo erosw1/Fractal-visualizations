@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fractal Projection Tool</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: rgba(255,255,255,0.08);
+    --text: #e8e8f0;
+    --muted: #7a7a9a;
+    --accent: #6a5aff;
+    --accent2: #ff5a8a;
+    --font-mono: 'Courier New', monospace;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-mono); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  #toolbar {
+    display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    flex-wrap: wrap; flex-shrink: 0;
+  }
+  .logo { font-size: 13px; font-weight: bold; color: var(--accent); letter-spacing: 0.1em; margin-right: 8px; }
+  .frac-btn {
+    font-family: var(--font-mono); font-size: 11px; font-weight: bold;
+    padding: 4px 10px; border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    cursor: pointer; transition: all 0.15s; letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .frac-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .frac-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #canvas-wrap {
+    flex: 1; position: relative; background: #000; overflow: hidden; cursor: crosshair;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud {
+    position: absolute; top: 10px; left: 10px;
+    font-size: 10px; color: rgba(150,150,200,0.7); line-height: 1.8;
+    pointer-events: none; font-family: var(--font-mono);
+  }
+  #hud-zoom { color: var(--accent); }
+  #sidepanel {
+    width: 240px; background: var(--surface); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0;
+  }
+  .section { padding: 12px; border-bottom: 1px solid var(--border); }
+  .section-title {
+    font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px; font-weight: bold;
+  }
+  #formula-box {
+    font-size: 12px; color: #aaf; padding: 8px; background: rgba(106,90,255,0.1);
+    border: 1px solid rgba(106,90,255,0.25); border-radius: 4px; line-height: 1.6;
+    min-height: 36px;
+  }
+  .param-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+  .param-label { font-size: 10px; color: var(--muted); min-width: 46px; }
+  .param-val { font-size: 10px; font-weight: bold; color: var(--text); min-width: 36px; text-align: right; }
+  input[type=range] {
+    flex: 1; -webkit-appearance: none; height: 3px; background: var(--border);
+    border-radius: 2px; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+  }
+  #colormap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .cm-sw {
+    height: 24px; border-radius: 3px; cursor: pointer; border: 1.5px solid transparent;
+    font-size: 8px; letter-spacing: 0.05em; color: rgba(255,255,255,0.7);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); text-transform: uppercase; transition: border 0.1s;
+  }
+  .cm-sw.active { border-color: #fff; }
+  #info-panel {
+    padding: 12px; font-size: 10px; color: var(--muted); line-height: 1.9;
+    flex: 1;
+  }
+  #info-panel strong { color: var(--text); }
+  #bottombar {
+    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
+  }
+  #progress-wrap { flex: 1; height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
+  #progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.08s; }
+  #render-status { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  #zoom-display { font-size: 10px; color: var(--accent); min-width: 40px; text-align: right; }
+  .tip { background: rgba(255,90,138,0.08); border: 1px solid rgba(255,90,138,0.2); border-radius: 4px; padding: 7px; margin-top: 8px; font-size: 10px; color: rgba(255,90,138,0.9); line-height: 1.7; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <span class="logo">∞ FRACTAL</span>
+  <button class="frac-btn active" data-frac="mandelbrot">Mandelbrot</button>
+  <button class="frac-btn" data-frac="julia">Julia</button>
+  <button class="frac-btn" data-frac="burning">Burning Ship</button>
+  <button class="frac-btn" data-frac="newton">Newton</button>
+  <button class="frac-btn" data-frac="sierpinski">Sierpinski</button>
+  <button class="frac-btn" data-frac="lyapunov">Lyapunov</button>
+  <div class="sep"></div>
+  <button class="frac-btn" id="btn-reset">↺ reset</button>
+  <button class="frac-btn" id="btn-snap">⬇ save</button>
+  <div id="zoom-display">1.0×</div>
+</div>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <canvas id="fractal"></canvas>
+    <div id="hud">
+      <div id="hud-coord">hover to explore complex plane</div>
+      <div id="hud-zoom"></div>
+      <div id="hud-hint" style="margin-top:4px;color:rgba(106,90,255,0.8)"></div>
+    </div>
+  </div>
+
+  <div id="sidepanel">
+    <div class="section">
+      <div class="section-title">recurrence formula</div>
+      <div id="formula-box">z → z² + c</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">parameters</div>
+      <div id="params-wrap">
+        <div class="param-row" id="r-iter">
+          <span class="param-label">max iter</span>
+          <input type="range" id="p-iter" min="32" max="1024" step="32" value="256">
+          <span class="param-val" id="v-iter">256</span>
+        </div>
+        <div class="param-row" id="r-escape">
+          <span class="param-label">escape R</span>
+          <input type="range" id="p-escape" min="2" max="20" step="0.5" value="4">
+          <span class="param-val" id="v-escape">4.0</span>
+        </div>
+        <div class="param-row" id="r-power" style="display:none">
+          <span class="param-label">power</span>
+          <input type="range" id="p-power" min="2" max="8" step="1" value="2">
+          <span class="param-val" id="v-power">2</span>
+        </div>
+        <div class="param-row" id="r-cx" style="display:none">
+          <span class="param-label">c.real</span>
+          <input type="range" id="p-cx" min="-2" max="2" step="0.005" value="-0.7">
+          <span class="param-val" id="v-cx">-0.700</span>
+        </div>
+        <div class="param-row" id="r-cy" style="display:none">
+          <span class="param-label">c.imag</span>
+          <input type="range" id="p-cy" min="-2" max="2" step="0.005" value="0.27">
+          <span class="param-val" id="v-cy">0.270</span>
+        </div>
+        <div class="param-row" id="r-depth" style="display:none">
+          <span class="param-label">depth</span>
+          <input type="range" id="p-depth" min="1" max="10" step="1" value="7">
+          <span class="param-val" id="v-depth">7</span>
+        </div>
+        <div class="param-row" id="r-lyap-a" style="display:none">
+          <span class="param-label">r_A</span>
+          <input type="range" id="p-lyap-a" min="2" max="4" step="0.01" value="3.5">
+          <span class="param-val" id="v-lyap-a">3.50</span>
+        </div>
+        <div class="param-row" id="r-lyap-b" style="display:none">
+          <span class="param-label">r_B</span>
+          <input type="range" id="p-lyap-b" min="2" max="4" step="0.01" value="2.8">
+          <span class="param-val" id="v-lyap-b">2.80</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">color palette</div>
+      <div id="colormap-grid">
+        <div class="cm-sw active" data-cm="fire" style="background:linear-gradient(90deg,#000,#0f0,#ff0,#f80,#f00)">fire</div>
+        <div class="cm-sw" data-cm="ice" style="background:linear-gradient(90deg,#000,#013,#06a,#4cf,#fff)">ice</div>
+        <div class="cm-sw" data-cm="neon" style="background:linear-gradient(90deg,#000,#04f,#0ff,#f0f,#ff0)">neon</div>
+        <div class="cm-sw" data-cm="plasma" style="background:linear-gradient(90deg,#0d0221,#58007e,#ba0a6e,#ff8c00,#fff)">plasma</div>
+        <div class="cm-sw" data-cm="copper" style="background:linear-gradient(90deg,#000,#421,#a52,#d84,#fe8)">copper</div>
+        <div class="cm-sw" data-cm="deep" style="background:linear-gradient(90deg,#000,#003,#008,#0af,#aff)">deep</div>
+        <div class="cm-sw" data-cm="gray" style="background:linear-gradient(90deg,#000,#444,#888,#bbb,#fff)">mono</div>
+        <div class="cm-sw" data-cm="rainbow" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)">rgb</div>
+      </div>
+    </div>
+
+    <div id="info-panel">
+      <strong>navigation</strong><br>
+      scroll → zoom in/out<br>
+      drag → pan the view<br>
+      click mandelbrot → jump to julia<br><br>
+      <strong>what you're seeing</strong><br>
+      <span id="frac-desc">Points colored by how quickly z escapes to ∞ under iteration of z²+c. The boundary (Mandelbrot set) is infinitely detailed at any zoom.</span>
+      <div class="tip" id="frac-tip">💡 Click anywhere on the Mandelbrot set to generate the corresponding Julia set for that point c.</div>
+    </div>
+  </div>
+</div>
+
+<div id="bottombar">
+  <span id="render-status">ready</span>
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+</div>
+
+<script>
+const canvas = document.getElementById('fractal');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+
+let W = 800, H = 600;
+let currentFrac = 'mandelbrot';
+let maxIter = 256, escR = 4, juliaC = {x: -0.7, y: 0.27}, power = 2, sierDepth = 7;
+let lyapA = 3.5, lyapB = 2.8;
+let colorMap = 'fire';
+let viewX = -2.5, viewY = -1.5, viewW = 3.5, viewH = 3.0;
+let renderJob = null;
+let zoomFactor = 1.0;
+
+const palettes = {
+  fire:    [[0,0,0],[0,220,0],[255,255,0],[255,136,0],[255,0,0]],
+  ice:     [[0,0,0],[0,17,51],[0,102,180],[68,204,255],[255,255,255]],
+  neon:    [[0,0,0],[0,68,255],[0,255,255],[255,0,255],[255,255,0]],
+  plasma:  [[13,2,33],[88,0,126],[186,10,110],[255,140,0],[255,255,255]],
+  copper:  [[0,0,0],[68,34,17],[170,85,34],[221,136,68],[255,238,136]],
+  deep:    [[0,0,0],[0,0,51],[0,0,136],[0,170,255],[170,255,255]],
+  gray:    [[0,0,0],[64,64,64],[128,128,128],[192,192,192],[255,255,255]],
+  rainbow: [[255,0,0],[255,255,0],[0,255,0],[0,255,255],[0,0,255],[255,0,255]],
+};
+
+function lerpColor(a, b, t) { return [a[0]+(b[0]-a[0])*t|0, a[1]+(b[1]-a[1])*t|0, a[2]+(b[2]-a[2])*t|0]; }
+function getColor(t) {
+  const stops = palettes[colorMap] || palettes.fire;
+  if (t <= 0) return stops[0];
+  if (t >= 1) return stops[stops.length-1];
+  const s = t * (stops.length-1);
+  const i = Math.floor(s);
+  return lerpColor(stops[i], stops[Math.min(i+1,stops.length-1)], s-i);
+}
+
+function smoothT(iter, maxI, zr, zi) {
+  if (iter === maxI) return 0;
+  const log2 = Math.log(zr*zr+zi*zi)/2;
+  const nu = Math.log(log2/Math.log(2))/Math.log(2);
+  return Math.min(1, (iter+1-nu) / maxI);
+}
+
+function iterMandelbrot(cr, ci) {
+  let zr=0, zi=0, i=0, zr2=0, zi2=0;
+  const e2 = escR*escR;
+  while (i < maxIter) {
+    if (power === 2) {
+      zr2=zr*zr; zi2=zi*zi;
+      if (zr2+zi2 > e2) break;
+      zi = 2*zr*zi + ci; zr = zr2-zi2+cr;
+    } else {
+      if (zr*zr+zi*zi > e2) break;
+      const r = Math.sqrt(zr*zr+zi*zi), a = Math.atan2(zi,zr);
+      const rp = Math.pow(r,power);
+      zr = rp*Math.cos(a*power)+cr; zi = rp*Math.sin(a*power)+ci;
+    }
+    i++;
+  }
+  return {i, zr, zi};
+}
+
+function iterJulia(zr, zi) {
+  let i=0, zr2=0, zi2=0;
+  const e2=escR*escR, cr=juliaC.x, ci=juliaC.y;
+  while (i < maxIter) {
+    if (power===2) {
+      zr2=zr*zr; zi2=zi*zi;
+      if (zr2+zi2>e2) break;
+      zi=2*zr*zi+ci; zr=zr2-zi2+cr;
+    } else {
+      if (zr*zr+zi*zi>e2) break;
+      const r=Math.sqrt(zr*zr+zi*zi), a=Math.atan2(zi,zr);
+      const rp=Math.pow(r,power);
+      zr=rp*Math.cos(a*power)+cr; zi=rp*Math.sin(a*power)+ci;
+    }
+    i++;
+  }
+  return {i, zr, zi};
+}
+
+function iterBurningShip(cr, ci) {
+  let zr=0, zi=0, i=0;
+  const e2=escR*escR;
+  while (i<maxIter && zr*zr+zi*zi<e2) {
+    const tmp=zr*zr-zi*zi+cr;
+    zi=Math.abs(2*zr*zi)+ci; zr=tmp;
+    i++;
+  }
+  return {i, zr, zi};
+}
+
+const newtonRoots = [{r:1,i:0},{r:-0.5,i:0.866},{r:-0.5,i:-0.866}];
+function iterNewton(zr, zi) {
+  for (let k=0; k<maxIter; k++) {
+    const r2=zr*zr+zi*zi, r4=r2*r2||1e-20;
+    const nzr = zr - (zr*r2-zr)/(3*r4), nzi = zi - (zi*r2-zi)/(3*r4);
+    const dr=nzr-zr, di=nzi-zi;
+    zr=nzr; zi=nzi;
+    if (dr*dr+di*di<1e-14) break;
+  }
+  let best=0, bd=Infinity;
+  for (let k=0;k<3;k++) { const d=(zr-newtonRoots[k].r)**2+(zi-newtonRoots[k].i)**2; if(d<bd){bd=d;best=k;} }
+  return {root:best, dist:bd};
+}
+
+function renderSierpinski() {
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  const sz=Math.min(W,H)*0.9, ox=(W-sz)/2, oy=(H-sz)/2;
+  const colPal=['#4466ff','#ff4488','#44ffaa'];
+  function tri(x1,y1,x2,y2,x3,y3,d,c) {
+    if(d===0){
+      ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.lineTo(x3,y3);ctx.closePath();
+      ctx.fillStyle=colPal[c%3];ctx.fill();return;
+    }
+    const mx12=(x1+x2)/2,my12=(y1+y2)/2,mx23=(x2+x3)/2,my23=(y2+y3)/2,mx13=(x1+x3)/2,my13=(y1+y3)/2;
+    tri(x1,y1,mx12,my12,mx13,my13,d-1,c);
+    tri(mx12,my12,x2,y2,mx23,my23,d-1,c+1);
+    tri(mx13,my13,mx23,my23,x3,y3,d-1,c+2);
+  }
+  tri(ox+sz/2,oy,ox+sz,oy+sz,ox,oy+sz,sierDepth,0);
+  setStatus('sierpinski · depth '+sierDepth); setProgress(100);
+  setTimeout(()=>setProgress(0),600);
+}
+
+function renderLyapunov() {
+  const img = ctx.createImageData(W,H);
+  const d=img.data;
+  for(let py=0;py<H;py++){
+    const b = lyapB + (4-lyapB)*(py/H);
+    for(let px=0;px<W;px++){
+      const a2 = lyapA + (4-lyapA)*(px/W);
+      let x=0.5, lya=0;
+      const seq='AB';
+      for(let n=0;n<200;n++){
+        const r=n%2===0?a2:b;
+        x=r*x*(1-x);
+        if(n>100) lya+=Math.log(Math.abs(r*(1-2*x))||1e-10);
+      }
+      lya/=100;
+      const off=(py*W+px)*4;
+      if(lya<0){ const t=Math.min(1,Math.abs(lya)/3); const c=getColor(t); d[off]=c[0];d[off+1]=c[1];d[off+2]=c[2]; }
+      else { const t=Math.min(1,lya/2); d[off]=t*40|0;d[off+1]=t*180|0;d[off+2]=t*80|0; }
+      d[off+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  setStatus('lyapunov exponent'); setProgress(100); setTimeout(()=>setProgress(0),600);
+}
+
+function renderIterFrac(type) {
+  const img=ctx.createImageData(W,H);
+  const d=img.data;
+  const pw=viewW/W, ph=viewH/H;
+  let idx=0; const total=W*H;
+  setStatus('rendering...'); setProgress(0);
+  const CHUNK=5000;
+  cancelJob();
+  function chunk() {
+    const end=Math.min(idx+CHUNK,total);
+    for(let p=idx;p<end;p++){
+      const px=p%W, py=(p/W)|0;
+      const cr=viewX+px*pw, ci=viewY+py*ph;
+      const off=p*4;
+      if(type==='mandelbrot'){
+        const {i,zr,zi}=iterMandelbrot(cr,ci);
+        const t=smoothT(i,maxIter,zr,zi);
+        const c=getColor(t); d[off]=c[0];d[off+1]=c[1];d[off+2]=c[2];
+      } else if(type==='julia'){
+        const {i,zr,zi}=iterJulia(cr,ci);
+        const t=smoothT(i,maxIter,zr,zi);
+        const c=getColor(t); d[off]=c[0];d[off+1]=c[1];d[off+2]=c[2];
+      } else if(type==='burning'){
+        const {i,zr,zi}=iterBurningShip(cr,ci);
+        const t=smoothT(i,maxIter,zr,zi);
+        const c=getColor(t); d[off]=c[0];d[off+1]=c[1];d[off+2]=c[2];
+      } else if(type==='newton'){
+        const {root,dist}=iterNewton(cr,ci);
+        const brt=1-Math.min(1,dist*5);
+        const cols=[[68,100,220],[220,68,100],[68,220,140]];
+        const c=cols[root];
+        d[off]=c[0]*brt|0;d[off+1]=c[1]*brt|0;d[off+2]=c[2]*brt|0;
+      }
+      d[off+3]=255;
+    }
+    idx=end;
+    setProgress(idx/total*100);
+    if(idx<total) { renderJob=requestAnimationFrame(chunk); }
+    else { ctx.putImageData(img,0,0); setStatus(type+' · '+W+'×'+H+' · '+maxIter+' iter'); setTimeout(()=>setProgress(0),1000); }
+  }
+  renderJob=requestAnimationFrame(chunk);
+}
+
+function cancelJob() { if(renderJob){cancelAnimationFrame(renderJob);renderJob=null;} }
+function setStatus(s){ document.getElementById('render-status').textContent=s; }
+function setProgress(p){ document.getElementById('progress-bar').style.width=p+'%'; }
+
+let renderTimer=null;
+function scheduleRender(){ clearTimeout(renderTimer); renderTimer=setTimeout(doRender,100); }
+function doRender(){
+  if(currentFrac==='sierpinski'){renderSierpinski();return;}
+  if(currentFrac==='lyapunov'){cancelJob();renderLyapunov();return;}
+  renderIterFrac(currentFrac);
+}
+
+function resize(){
+  W=wrap.clientWidth; H=wrap.clientHeight||500;
+  canvas.width=W; canvas.height=H;
+  scheduleRender();
+}
+
+const defaultViews = {
+  mandelbrot:[-2.5,-1.5,3.5,3.0],
+  julia:[-2,-1.5,4,3.0],
+  burning:[-2.5,-2.0,3.5,3.0],
+  newton:[-2,-1.5,4,3.0],
+  sierpinski:[0,0,1,1],
+  lyapunov:[0,0,1,1],
+};
+
+function resetView(){
+  const v=defaultViews[currentFrac]||[-2.5,-1.5,3.5,3.0];
+  [viewX,viewY,viewW,viewH]=v; zoomFactor=1.0;
+  document.getElementById('zoom-display').textContent='1.0×';
+  scheduleRender();
+}
+
+const fracDescs = {
+  mandelbrot: 'Points colored by how quickly z escapes to ∞ under z²+c. The boundary is infinitely detailed.',
+  julia: 'Fixed c, varying z₀. Each point in the plane is a different starting orbit under z²+c.',
+  burning: 'Like Mandelbrot but z → (|Re(z)|+i|Im(z)|)²+c. The absolute values create asymmetric flame-like shapes.',
+  newton: "Newton's method for z³=1 converges to one of 3 roots. Color = which root, brightness = convergence speed.",
+  sierpinski: 'IFS fractal: subdivide triangle, remove middle, repeat. Self-similar at every scale.',
+  lyapunov: 'Lyapunov exponent of the logistic map with alternating growth rates A and B. Blue=stable, green=chaos.',
+};
+const fracTips = {
+  mandelbrot: '💡 Click anywhere to generate the Julia set for that c value.',
+  julia: '💡 Adjust c.real and c.imag sliders to morph the Julia set in real time.',
+  burning: '💡 The burning ship appears upside-down — zoom in near (-1.75, -0.03) for the "ship" shape.',
+  newton: '💡 The three basins of attraction create fractal boundaries between roots.',
+  sierpinski: '💡 Increase depth to reveal finer self-similar structure.',
+  lyapunov: '💡 r_A and r_B are the two alternating logistic growth rates. The fractal boundary is chaos.',
+};
+const fracFormulas = {
+  mandelbrot: 'z → z² + c',
+  julia: 'z → z² + c  (c fixed)',
+  burning: 'z → (|Re|+i|Im|)² + c',
+  newton: 'z → z − (z³−1)/(3z²)',
+  sierpinski: 'IFS: scale by ½, 3 copies',
+  lyapunov: 'xₙ₊₁ = rₙ·xₙ·(1−xₙ)',
+};
+
+document.querySelectorAll('.frac-btn[data-frac]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.frac-btn[data-frac]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFrac=btn.dataset.frac;
+    updateParamVisibility();
+    document.getElementById('formula-box').textContent=fracFormulas[currentFrac]||'';
+    document.getElementById('frac-desc').textContent=fracDescs[currentFrac]||'';
+    document.getElementById('frac-tip').textContent=fracTips[currentFrac]||'';
+    document.getElementById('hud-hint').textContent=currentFrac==='mandelbrot'?'click → julia set':'';
+    resetView();
+  });
+});
+
+function updateParamVisibility(){
+  const show=id=>document.getElementById(id).style.display='flex';
+  const hide=id=>document.getElementById(id).style.display='none';
+  ['r-iter','r-escape','r-power','r-cx','r-cy','r-depth','r-lyap-a','r-lyap-b'].forEach(hide);
+  if(currentFrac==='mandelbrot'||currentFrac==='burning'){show('r-iter');show('r-escape');show('r-power');}
+  else if(currentFrac==='julia'){show('r-iter');show('r-escape');show('r-power');show('r-cx');show('r-cy');}
+  else if(currentFrac==='newton'){show('r-iter');}
+  else if(currentFrac==='sierpinski'){show('r-depth');}
+  else if(currentFrac==='lyapunov'){show('r-lyap-a');show('r-lyap-b');}
+}
+
+document.getElementById('btn-reset').addEventListener('click',resetView);
+
+function bindSlider(id,vid,fn){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.addEventListener('input',()=>{
+    fn(el.value);
+    document.getElementById(vid).textContent=parseFloat(el.value).toFixed(el.step&&el.step<1?3:0);
+    document.getElementById('formula-box').textContent=fracFormulas[currentFrac]||'';
+    scheduleRender();
+  });
+}
+bindSlider('p-iter','v-iter',v=>maxIter=+v);
+bindSlider('p-escape','v-escape',v=>escR=+v);
+bindSlider('p-power','v-power',v=>power=+v);
+bindSlider('p-cx','v-cx',v=>juliaC.x=+v);
+bindSlider('p-cy','v-cy',v=>juliaC.y=+v);
+bindSlider('p-depth','v-depth',v=>sierDepth=+v);
+bindSlider('p-lyap-a','v-lyap-a',v=>lyapA=+v);
+bindSlider('p-lyap-b','v-lyap-b',v=>lyapB=+v);
+
+document.querySelectorAll('.cm-sw').forEach(sw=>{
+  sw.addEventListener('click',()=>{
+    document.querySelectorAll('.cm-sw').forEach(s=>s.classList.remove('active'));
+    sw.classList.add('active'); colorMap=sw.dataset.cm; scheduleRender();
+  });
+});
+
+let isPan=false, panStart={x:0,y:0}, panV={x:0,y:0};
+canvas.addEventListener('mousedown',e=>{isPan=true;panStart={x:e.clientX,y:e.clientY};panV={x:viewX,y:viewY};canvas.style.cursor='grab';});
+window.addEventListener('mouseup',()=>{isPan=false;canvas.style.cursor='crosshair';});
+window.addEventListener('mousemove',e=>{
+  if(isPan){
+    const dx=(e.clientX-panStart.x)/W*viewW, dy=(e.clientY-panStart.y)/H*viewH;
+    viewX=panV.x-dx; viewY=panV.y-dy; scheduleRender(); return;
+  }
+  const r=canvas.getBoundingClientRect();
+  const px=(e.clientX-r.left)/r.width, py=(e.clientY-r.top)/r.height;
+  const cx=viewX+px*viewW, cy=viewY+py*viewH;
+  document.getElementById('hud-coord').textContent=
+    (cx>=0?'+':'')+cx.toFixed(6)+' '+(cy>=0?'+':'')+cy.toFixed(6)+'i';
+});
+
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  const mx=(e.clientX-r.left)/r.width, my=(e.clientY-r.top)/r.height;
+  const factor=e.deltaY>0?1.25:0.8;
+  const cx=viewX+mx*viewW, cy=viewY+my*viewH;
+  viewW*=factor; viewH*=factor;
+  viewX=cx-mx*viewW; viewY=cy-my*viewH;
+  zoomFactor=Math.round(3.5/viewW*100)/100;
+  document.getElementById('zoom-display').textContent=zoomFactor+'×';
+  scheduleRender();
+},{passive:false});
+
+canvas.addEventListener('click',e=>{
+  if(currentFrac!=='mandelbrot')return;
+  const r=canvas.getBoundingClientRect();
+  const px=(e.clientX-r.left)/r.width, py=(e.clientY-r.top)/r.height;
+  juliaC.x=+(viewX+px*viewW).toFixed(4);
+  juliaC.y=+(viewY+py*viewH).toFixed(4);
+  document.getElementById('p-cx').value=juliaC.x;
+  document.getElementById('p-cy').value=juliaC.y;
+  document.getElementById('v-cx').textContent=juliaC.x.toFixed(3);
+  document.getElementById('v-cy').textContent=juliaC.y.toFixed(3);
+  document.querySelectorAll('.frac-btn[data-frac]').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.frac-btn[data-frac="julia"]').classList.add('active');
+  currentFrac='julia';
+  updateParamVisibility();
+  document.getElementById('formula-box').textContent=fracFormulas.julia;
+  document.getElementById('frac-desc').textContent=fracDescs.julia;
+  document.getElementById('frac-tip').textContent=fracTips.julia;
+  document.getElementById('hud-hint').textContent='';
+  [viewX,viewY,viewW,viewH]=defaultViews.julia;
+  scheduleRender();
+});
+
+document.getElementById('btn-snap').addEventListener('click',()=>{
+  const a=document.createElement('a');
+  a.download=`fractal-${currentFrac}-${Date.now()}.png`;
+  a.href=canvas.toDataURL('image/png'); a.click();
+});
+
+updateParamVisibility();
+document.getElementById('hud-hint').textContent='click → julia set';
+new ResizeObserver(resize).observe(wrap);
+setTimeout(resize,30);
+</script>
+</body>
+</html>
