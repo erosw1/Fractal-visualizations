@@ -92,11 +92,67 @@
   #render-status { font-size: 10px; color: var(--muted); white-space: nowrap; }
   #zoom-display { font-size: 10px; color: var(--accent); min-width: 40px; text-align: right; }
   .tip { background: rgba(255,90,138,0.08); border: 1px solid rgba(255,90,138,0.2); border-radius: 4px; padding: 7px; margin-top: 8px; font-size: 10px; color: rgba(255,90,138,0.9); line-height: 1.7; }
+
+  /* image adjustment sliders with color-coded tracks */
+  .adj-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .adj-label { font-size: 10px; color: var(--muted); min-width: 52px; }
+  .adj-val { font-size: 10px; font-weight: bold; color: var(--text); min-width: 34px; text-align: right; }
+  .adj-reset { font-size: 9px; color: var(--muted); cursor: pointer; padding: 1px 4px; border-radius: 2px; border: 1px solid var(--border); background: transparent; font-family: var(--font-mono); transition: all 0.1s; }
+  .adj-reset:hover { color: var(--accent); border-color: var(--accent); }
+  #adj-reset-all {
+    font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+    background: transparent; border: 1px solid var(--border); border-radius: 3px;
+    padding: 3px 8px; cursor: pointer; transition: all 0.1s; margin-top: 4px; width: 100%;
+  }
+  #adj-reset-all:hover { color: var(--accent2); border-color: var(--accent2); }
+
+  /* histogram bar chart */
+  #histogram-canvas { width: 100%; height: 48px; display: block; border-radius: 3px; background: rgba(0,0,0,0.4); margin-bottom: 8px; }
+
+  /* save modal */
+  #save-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  #save-modal.open { display: flex; }
+  #save-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 20px; width: 340px; font-family: var(--font-mono);
+  }
+  #save-box h3 { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  .save-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .save-label { font-size: 10px; color: var(--muted); min-width: 70px; }
+  .save-row select, .save-row input[type=text] {
+    flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font-mono); font-size: 10px;
+    padding: 4px 7px; border-radius: 3px; outline: none;
+  }
+  .save-row select:focus, .save-row input[type=text]:focus { border-color: var(--accent); }
+  .res-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; flex: 1; }
+  .res-btn {
+    font-family: var(--font-mono); font-size: 9px; padding: 4px 2px; border-radius: 3px;
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    cursor: pointer; text-align: center; transition: all 0.1s;
+  }
+  .res-btn:hover, .res-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(106,90,255,0.1); }
+  #save-preview-wrap { position: relative; width: 100%; height: 100px; background: #000; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+  #save-preview { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .save-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .save-actions button {
+    flex: 1; font-family: var(--font-mono); font-size: 11px; font-weight: bold;
+    padding: 7px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  #btn-do-save { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+  #btn-do-save:hover { background: #7b6dff; }
+  #btn-cancel-save { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  #btn-cancel-save:hover { border-color: var(--muted); color: var(--text); }
+  #save-info { font-size: 9px; color: var(--muted); margin-bottom: 10px; line-height: 1.6; }
 </style>
 </head>
 <body>
 <div id="toolbar">
-  <span class="logo">∞ FRACTAL</span>
+  <span class="logo">∞ Eros's Fractal visualization</span>
   <button class="frac-btn active" data-frac="mandelbrot">Mandelbrot</button>
   <button class="frac-btn" data-frac="julia">Julia</button>
   <button class="frac-btn" data-frac="burning">Burning Ship</button>
@@ -105,13 +161,52 @@
   <button class="frac-btn" data-frac="lyapunov">Lyapunov</button>
   <div class="sep"></div>
   <button class="frac-btn" id="btn-reset">↺ reset</button>
-  <button class="frac-btn" id="btn-snap">⬇ save</button>
+  <button class="frac-btn" id="btn-snap">⬇ export</button>
   <div id="zoom-display">1.0×</div>
+</div>
+
+<!-- save modal -->
+<div id="save-modal">
+  <div id="save-box">
+    <h3>export image</h3>
+    <div id="save-preview-wrap">
+      <canvas id="save-preview"></canvas>
+    </div>
+    <div id="save-info"></div>
+    <div class="save-row">
+      <span class="save-label">resolution</span>
+      <div class="res-grid">
+        <button class="res-btn active" data-w="0" data-h="0">current</button>
+        <button class="res-btn" data-w="1280" data-h="720">1280×720</button>
+        <button class="res-btn" data-w="1920" data-h="1080">1920×1080</button>
+        <button class="res-btn" data-w="2560" data-h="1440">2560×1440</button>
+        <button class="res-btn" data-w="3840" data-h="2160">3840×2160</button>
+        <button class="res-btn" data-w="4096" data-h="4096">4096×4096</button>
+      </div>
+    </div>
+    <div class="save-row">
+      <span class="save-label">format</span>
+      <select id="save-format">
+        <option value="image/png">PNG (lossless)</option>
+        <option value="image/jpeg">JPEG (smaller)</option>
+        <option value="image/webp">WebP (modern)</option>
+      </select>
+    </div>
+    <div class="save-row">
+      <span class="save-label">filename</span>
+      <input type="text" id="save-filename" value="fractal">
+    </div>
+    <div class="save-actions">
+      <button id="btn-cancel-save">cancel</button>
+      <button id="btn-do-save">⬇ download</button>
+    </div>
+  </div>
 </div>
 
 <div id="main">
   <div id="canvas-wrap">
-    <canvas id="fractal"></canvas>
+    <canvas id="fractal" style="display:none"></canvas>
+    <canvas id="display"></canvas>
     <div id="hud">
       <div id="hud-coord">hover to explore complex plane</div>
       <div id="hud-zoom"></div>
@@ -185,6 +280,54 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section-title">image adjustments</div>
+      <canvas id="histogram-canvas" width="210" height="48" title="Luminance histogram"></canvas>
+      <div class="adj-row">
+        <span class="adj-label">brightness</span>
+        <input type="range" id="a-brightness" min="-100" max="100" step="1" value="0">
+        <span class="adj-val" id="v-brightness">0</span>
+        <button class="adj-reset" data-target="a-brightness" data-default="0">↺</button>
+      </div>
+      <div class="adj-row">
+        <span class="adj-label">contrast</span>
+        <input type="range" id="a-contrast" min="-100" max="100" step="1" value="0">
+        <span class="adj-val" id="v-contrast">0</span>
+        <button class="adj-reset" data-target="a-contrast" data-default="0">↺</button>
+      </div>
+      <div class="adj-row">
+        <span class="adj-label">saturation</span>
+        <input type="range" id="a-saturation" min="-100" max="100" step="1" value="0">
+        <span class="adj-val" id="v-saturation">0</span>
+        <button class="adj-reset" data-target="a-saturation" data-default="0">↺</button>
+      </div>
+      <div class="adj-row">
+        <span class="adj-label">gamma</span>
+        <input type="range" id="a-gamma" min="10" max="300" step="1" value="100">
+        <span class="adj-val" id="v-gamma">1.0</span>
+        <button class="adj-reset" data-target="a-gamma" data-default="100">↺</button>
+      </div>
+      <div class="adj-row">
+        <span class="adj-label">hue shift</span>
+        <input type="range" id="a-hue" min="0" max="360" step="1" value="0">
+        <span class="adj-val" id="v-hue">0°</span>
+        <button class="adj-reset" data-target="a-hue" data-default="0">↺</button>
+      </div>
+      <div class="adj-row">
+        <span class="adj-label">invert</span>
+        <input type="range" id="a-invert" min="0" max="100" step="1" value="0">
+        <span class="adj-val" id="v-invert">0%</span>
+        <button class="adj-reset" data-target="a-invert" data-default="0">↺</button>
+      </div>
+      <div class="adj-row">
+        <span class="adj-label">vignette</span>
+        <input type="range" id="a-vignette" min="0" max="100" step="1" value="0">
+        <span class="adj-val" id="v-vignette">0%</span>
+        <button class="adj-reset" data-target="a-vignette" data-default="0">↺</button>
+      </div>
+      <button id="adj-reset-all">reset all adjustments</button>
+    </div>
+
     <div id="info-panel">
       <strong>navigation</strong><br>
       scroll → zoom in/out<br>
@@ -203,11 +346,308 @@
 </div>
 
 <script>
+// Two-canvas architecture: fractal → raw canvas (hidden), display canvas (post-processed)
 const canvas = document.getElementById('fractal');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', {willReadFrequently: true});
+const display = document.getElementById('display');
+const dctx = display.getContext('2d');
 const wrap = document.getElementById('canvas-wrap');
 
+// Image adjustment state
+const adj = { brightness: 0, contrast: 0, saturation: 0, gamma: 1.0, hue: 0, invert: 0, vignette: 0 };
+
+// Build LUT tables for fast per-pixel ops
+function buildLUTs() {
+  const bright = new Uint8ClampedArray(256);
+  const cont = new Uint8ClampedArray(256);
+  const gam = new Uint8ClampedArray(256);
+  const inv = new Uint8ClampedArray(256);
+  const bVal = adj.brightness * 2.55;
+  const cFactor = (259 * (adj.contrast + 255)) / (255 * (259 - adj.contrast));
+  const gVal = adj.gamma;
+  const iVal = adj.invert / 100;
+  for (let i = 0; i < 256; i++) {
+    let v = i;
+    // brightness
+    v = Math.min(255, Math.max(0, v + bVal));
+    // contrast
+    v = Math.min(255, Math.max(0, cFactor * (v - 128) + 128));
+    // gamma
+    v = Math.min(255, Math.max(0, Math.pow(v / 255, 1 / gVal) * 255));
+    // invert
+    v = v * (1 - iVal) + (255 - v) * iVal;
+    bright[i] = cont[i] = gam[i] = inv[i] = v | 0;
+  }
+  return { lut: bright };
+}
+
+// RGB ↔ HSL for saturation + hue
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return [h, s, l];
+}
+function hslToRgb(h, s, l) {
+  if (s === 0) { const v = l * 255 | 0; return [v, v, v]; }
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  return [hue2rgb(p,q,h+1/3)*255|0, hue2rgb(p,q,h)*255|0, hue2rgb(p,q,h-1/3)*255|0];
+}
+
+function applyAdjustments() {
+  if (!canvas.width || !canvas.height) return;
+  // Copy raw fractal to display at same size
+  display.width = canvas.width; display.height = canvas.height;
+  dctx.drawImage(canvas, 0, 0);
+
+  const imgData = dctx.getImageData(0, 0, display.width, display.height);
+  const d = imgData.data;
+  const len = d.length;
+
+  const bVal = adj.brightness * 2.55;
+  const cFactor = (259 * (adj.contrast + 255)) / (255 * (259 - adj.contrast));
+  const gVal = 1 / adj.gamma;
+  const iVal = adj.invert / 100;
+  const satMul = 1 + adj.saturation / 100;
+  const hueShift = adj.hue / 360;
+
+  const doSatOrHue = adj.saturation !== 0 || adj.hue !== 0;
+
+  for (let i = 0; i < len; i += 4) {
+    let r = d[i], g = d[i+1], b = d[i+2];
+    // brightness + contrast + gamma + invert (combined per-channel)
+    r = Math.min(255, Math.max(0, r + bVal));
+    r = Math.min(255, Math.max(0, cFactor * (r - 128) + 128));
+    r = Math.min(255, Math.max(0, Math.pow(r / 255, gVal) * 255));
+    r = r * (1 - iVal) + (255 - r) * iVal;
+
+    g = Math.min(255, Math.max(0, g + bVal));
+    g = Math.min(255, Math.max(0, cFactor * (g - 128) + 128));
+    g = Math.min(255, Math.max(0, Math.pow(g / 255, gVal) * 255));
+    g = g * (1 - iVal) + (255 - g) * iVal;
+
+    b = Math.min(255, Math.max(0, b + bVal));
+    b = Math.min(255, Math.max(0, cFactor * (b - 128) + 128));
+    b = Math.min(255, Math.max(0, Math.pow(b / 255, gVal) * 255));
+    b = b * (1 - iVal) + (255 - b) * iVal;
+
+    if (doSatOrHue) {
+      let [h, s, l] = rgbToHsl(r, g, b);
+      s = Math.min(1, Math.max(0, s * satMul));
+      h = (h + hueShift) % 1;
+      [r, g, b] = hslToRgb(h, s, l);
+    }
+
+    d[i] = r | 0; d[i+1] = g | 0; d[i+2] = b | 0;
+  }
+
+  dctx.putImageData(imgData, 0, 0);
+
+  // Vignette overlay
+  if (adj.vignette > 0) {
+    const vStr = adj.vignette / 100;
+    const cx2 = display.width / 2, cy2 = display.height / 2;
+    const rx = cx2 * 1.4, ry = cy2 * 1.4;
+    const grad = dctx.createRadialGradient(cx2, cy2, Math.min(cx2,cy2)*0.3, cx2, cy2, Math.max(rx,ry));
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, `rgba(0,0,0,${vStr.toFixed(2)})`);
+    dctx.fillStyle = grad;
+    dctx.fillRect(0, 0, display.width, display.height);
+  }
+
+  updateHistogram(imgData);
+}
+
+// Histogram
+function updateHistogram(imgData) {
+  const hc = document.getElementById('histogram-canvas');
+  const hctx = hc.getContext('2d');
+  const bins = new Uint32Array(256);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
+    bins[lum]++;
+  }
+  const max = Math.max(...bins) || 1;
+  const hw = hc.width, hh = hc.height;
+  hctx.clearRect(0, 0, hw, hh);
+  hctx.fillStyle = 'rgba(0,0,0,0.5)';
+  hctx.fillRect(0, 0, hw, hh);
+  const bw = hw / 256;
+  for (let i = 0; i < 256; i++) {
+    const barH = (bins[i] / max) * hh;
+    const t = i / 255;
+    hctx.fillStyle = `rgba(${120+t*135|0},${90+t*90|0},${200+t*55|0},0.85)`;
+    hctx.fillRect(i * bw, hh - barH, Math.ceil(bw), barH);
+  }
+}
+
+// Adjustment sliders wiring
+const adjDefs = [
+  ['a-brightness','v-brightness','brightness', v => v+''          ],
+  ['a-contrast',  'v-contrast',  'contrast',   v => v+''          ],
+  ['a-saturation','v-saturation','saturation',  v => v+''          ],
+  ['a-gamma',     'v-gamma',     'gamma',       v => (v/100).toFixed(1)+'x', v => v/100],
+  ['a-hue',       'v-hue',       'hue',         v => v+'°'         ],
+  ['a-invert',    'v-invert',    'invert',      v => v+'%'         ],
+  ['a-vignette',  'v-vignette',  'vignette',    v => v+'%'         ],
+];
+
+function wireAdjSliders() {
+  adjDefs.forEach(([id, vid, key, fmt, transform]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      const raw = +el.value;
+      adj[key] = transform ? transform(raw) : raw;
+      document.getElementById(vid).textContent = fmt(raw);
+      applyAdjustments();
+    });
+  });
+  // Per-slider reset buttons
+  document.querySelectorAll('.adj-reset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      const defVal = +btn.dataset.default;
+      const el = document.getElementById(target);
+      el.value = defVal;
+      el.dispatchEvent(new Event('input'));
+    });
+  });
+  // Reset all
+  document.getElementById('adj-reset-all').addEventListener('click', () => {
+    adjDefs.forEach(([id,,, ,transform]) => {
+      const el = document.getElementById(id);
+      const def = +el.defaultValue;
+      el.value = def;
+      el.dispatchEvent(new Event('input'));
+    });
+  });
+}
+
+// ---- Save Modal ----
+let saveResW = 0, saveResH = 0; // 0 = use current
+
+function openSaveModal() {
+  const modal = document.getElementById('save-modal');
+  modal.classList.add('open');
+  updateSavePreview();
+}
+
+function updateSavePreview() {
+  const prev = document.getElementById('save-preview');
+  const pw = 300, ph = 100;
+  prev.width = pw; prev.height = ph;
+  const pctx = prev.getContext('2d');
+  pctx.drawImage(display, 0, 0, pw, ph);
+  const rw = saveResW || display.width, rh = saveResH || display.height;
+  const fmt = document.getElementById('save-format').value;
+  const ext = fmt === 'image/png' ? 'PNG' : fmt === 'image/jpeg' ? 'JPEG' : 'WebP';
+  document.getElementById('save-info').textContent =
+    `output: ${rw} × ${rh} px · format: ${ext} · fractal: ${currentFrac}`;
+}
+
+document.getElementById('btn-snap').addEventListener('click', openSaveModal);
+document.getElementById('btn-cancel-save').addEventListener('click', () => {
+  document.getElementById('save-modal').classList.remove('open');
+});
+document.getElementById('save-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('save-modal'))
+    document.getElementById('save-modal').classList.remove('open');
+});
+
+document.querySelectorAll('.res-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.res-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    saveResW = +btn.dataset.w; saveResH = +btn.dataset.h;
+    updateSavePreview();
+  });
+});
+document.getElementById('save-format').addEventListener('change', updateSavePreview);
+
+document.getElementById('btn-do-save').addEventListener('click', () => {
+  const fmt = document.getElementById('save-format').value;
+  const ext = fmt === 'image/png' ? 'png' : fmt === 'image/jpeg' ? 'jpg' : 'webp';
+  const filename = (document.getElementById('save-filename').value || 'fractal') + '.' + ext;
+  const rw = saveResW || display.width, rh = saveResH || display.height;
+
+  if (rw === display.width && rh === display.height) {
+    // current res — just download display canvas
+    doDownload(display, fmt, filename);
+  } else {
+    // Re-render at target resolution then download
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = rw; offCanvas.height = rh;
+    const offCtx = offCanvas.getContext('2d');
+    offCtx.drawImage(canvas, 0, 0, rw, rh); // draw raw fractal scaled
+    // Apply adjustments to offscreen
+    const imgData = offCtx.getImageData(0, 0, rw, rh);
+    const d2 = imgData.data;
+    const len2 = d2.length;
+    const bVal = adj.brightness * 2.55;
+    const cFactor = (259*(adj.contrast+255))/(255*(259-adj.contrast));
+    const gVal = 1 / adj.gamma;
+    const iVal = adj.invert / 100;
+    const satMul = 1 + adj.saturation / 100;
+    const hueShift = adj.hue / 360;
+    const doSH = adj.saturation !== 0 || adj.hue !== 0;
+    for (let i = 0; i < len2; i += 4) {
+      let r=d2[i],g=d2[i+1],b=d2[i+2];
+      [r,g,b]=[r,g,b].map(v=>{
+        v=Math.min(255,Math.max(0,v+bVal));
+        v=Math.min(255,Math.max(0,cFactor*(v-128)+128));
+        v=Math.min(255,Math.max(0,Math.pow(v/255,gVal)*255));
+        return v*(1-iVal)+(255-v)*iVal;
+      });
+      if(doSH){
+        let[h,s,l]=rgbToHsl(r,g,b);
+        s=Math.min(1,Math.max(0,s*satMul));
+        h=(h+hueShift)%1;
+        [r,g,b]=hslToRgb(h,s,l);
+      }
+      d2[i]=r|0;d2[i+1]=g|0;d2[i+2]=b|0;
+    }
+    offCtx.putImageData(imgData,0,0);
+    if(adj.vignette>0){
+      const vStr=adj.vignette/100;
+      const cx2=rw/2,cy2=rh/2;
+      const grad=offCtx.createRadialGradient(cx2,cy2,Math.min(cx2,cy2)*0.3,cx2,cy2,Math.max(cx2*1.4,cy2*1.4));
+      grad.addColorStop(0,'rgba(0,0,0,0)');
+      grad.addColorStop(1,`rgba(0,0,0,${vStr.toFixed(2)})`);
+      offCtx.fillStyle=grad; offCtx.fillRect(0,0,rw,rh);
+    }
+    doDownload(offCanvas, fmt, filename);
+  }
+  document.getElementById('save-modal').classList.remove('open');
+});
+
+function doDownload(cvs, fmt, filename) {
+  const quality = fmt === 'image/jpeg' ? 0.95 : undefined;
+  const url = quality ? cvs.toDataURL(fmt, quality) : cvs.toDataURL(fmt);
+  const a = document.createElement('a');
+  a.download = filename; a.href = url; a.click();
+}
+
 let W = 800, H = 600;
+// canvas = raw fractal buffer (hidden), display = post-processed visible
 let currentFrac = 'mandelbrot';
 let maxIter = 256, escR = 4, juliaC = {x: -0.7, y: 0.27}, power = 2, sierDepth = 7;
 let lyapA = 3.5, lyapB = 2.8;
@@ -324,6 +764,7 @@ function renderSierpinski() {
   tri(ox+sz/2,oy,ox+sz,oy+sz,ox,oy+sz,sierDepth,0);
   setStatus('sierpinski · depth '+sierDepth); setProgress(100);
   setTimeout(()=>setProgress(0),600);
+  applyAdjustments();
 }
 
 function renderLyapunov() {
@@ -349,6 +790,7 @@ function renderLyapunov() {
   }
   ctx.putImageData(img,0,0);
   setStatus('lyapunov exponent'); setProgress(100); setTimeout(()=>setProgress(0),600);
+  applyAdjustments();
 }
 
 function renderIterFrac(type) {
@@ -389,7 +831,7 @@ function renderIterFrac(type) {
     idx=end;
     setProgress(idx/total*100);
     if(idx<total) { renderJob=requestAnimationFrame(chunk); }
-    else { ctx.putImageData(img,0,0); setStatus(type+' · '+W+'×'+H+' · '+maxIter+' iter'); setTimeout(()=>setProgress(0),1000); }
+    else { ctx.putImageData(img,0,0); setStatus(type+' · '+W+'×'+H+' · '+maxIter+' iter'); setTimeout(()=>setProgress(0),1000); applyAdjustments(); }
   }
   renderJob=requestAnimationFrame(chunk);
 }
@@ -409,6 +851,10 @@ function doRender(){
 function resize(){
   W=wrap.clientWidth; H=wrap.clientHeight||500;
   canvas.width=W; canvas.height=H;
+  display.width=W; display.height=H;
+  display.style.position='absolute';
+  display.style.top='0'; display.style.left='0';
+  display.style.width='100%'; display.style.height='100%';
   scheduleRender();
 }
 
@@ -507,23 +953,28 @@ document.querySelectorAll('.cm-sw').forEach(sw=>{
 });
 
 let isPan=false, panStart={x:0,y:0}, panV={x:0,y:0};
-canvas.addEventListener('mousedown',e=>{isPan=true;panStart={x:e.clientX,y:e.clientY};panV={x:viewX,y:viewY};canvas.style.cursor='grab';});
-window.addEventListener('mouseup',()=>{isPan=false;canvas.style.cursor='crosshair';});
+display.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;
+  isPan=true;panStart={x:e.clientX,y:e.clientY};panV={x:viewX,y:viewY};
+  display.style.cursor='grab';
+});
+window.addEventListener('mouseup',()=>{isPan=false;display.style.cursor='crosshair';});
 window.addEventListener('mousemove',e=>{
   if(isPan){
     const dx=(e.clientX-panStart.x)/W*viewW, dy=(e.clientY-panStart.y)/H*viewH;
     viewX=panV.x-dx; viewY=panV.y-dy; scheduleRender(); return;
   }
-  const r=canvas.getBoundingClientRect();
+  const r=display.getBoundingClientRect();
   const px=(e.clientX-r.left)/r.width, py=(e.clientY-r.top)/r.height;
+  if(px<0||px>1||py<0||py>1)return;
   const cx=viewX+px*viewW, cy=viewY+py*viewH;
   document.getElementById('hud-coord').textContent=
     (cx>=0?'+':'')+cx.toFixed(6)+' '+(cy>=0?'+':'')+cy.toFixed(6)+'i';
 });
 
-canvas.addEventListener('wheel',e=>{
+display.addEventListener('wheel',e=>{
   e.preventDefault();
-  const r=canvas.getBoundingClientRect();
+  const r=display.getBoundingClientRect();
   const mx=(e.clientX-r.left)/r.width, my=(e.clientY-r.top)/r.height;
   const factor=e.deltaY>0?1.25:0.8;
   const cx=viewX+mx*viewW, cy=viewY+my*viewH;
@@ -534,9 +985,11 @@ canvas.addEventListener('wheel',e=>{
   scheduleRender();
 },{passive:false});
 
-canvas.addEventListener('click',e=>{
+display.addEventListener('click',e=>{
   if(currentFrac!=='mandelbrot')return;
-  const r=canvas.getBoundingClientRect();
+  // ignore if was panning
+  if(Math.abs(e.clientX-panStart.x)>4||Math.abs(e.clientY-panStart.y)>4)return;
+  const r=display.getBoundingClientRect();
   const px=(e.clientX-r.left)/r.width, py=(e.clientY-r.top)/r.height;
   juliaC.x=+(viewX+px*viewW).toFixed(4);
   juliaC.y=+(viewY+py*viewH).toFixed(4);
@@ -556,12 +1009,8 @@ canvas.addEventListener('click',e=>{
   scheduleRender();
 });
 
-document.getElementById('btn-snap').addEventListener('click',()=>{
-  const a=document.createElement('a');
-  a.download=`fractal-${currentFrac}-${Date.now()}.png`;
-  a.href=canvas.toDataURL('image/png'); a.click();
-});
-
+// Init
+wireAdjSliders();
 updateParamVisibility();
 document.getElementById('hud-hint').textContent='click → julia set';
 new ResizeObserver(resize).observe(wrap);
